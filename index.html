@@ -68,6 +68,7 @@ const warning = document.getElementById('warning');
 
 let player = { x:450, y:300, name:'', msg:'', msgTime:0 };
 let players = {};
+let localId = 'local';
 let keys = {};
 
 // PERGUNTA O NOME AO ENTRAR
@@ -96,7 +97,13 @@ function update() {
   if (keys['a']) player.x -= 3;
   if (keys['d']) player.x += 3;
 
-  ws.send(JSON.stringify({ type:'update', player }));
+  // PLAYER LOCAL SEMPRE VISÍVEL
+  players[localId] = player;
+
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify({ type:'update', player }));
+  }
+}));
 }
 
 function draw() {
@@ -106,10 +113,12 @@ ctx.fillRect(0,0,canvas.width,canvas.height);
 
   // MAPA SIMPLES COM ÁRVORES
   // ÁRVORES
-for (let i=0;i<15;i++){
-  ctx.fillStyle='#2e7d32';
+for (let i=0;i<12;i++){
+  ctx.fillStyle='#6d4c41'; // tronco
+  ctx.fillRect(80+i*140,120,20,40);
+  ctx.fillStyle='#1b5e20'; // copa
   ctx.beginPath();
-  ctx.arc(100+i*120,150,25,0,Math.PI*2);
+  ctx.arc(90+i*140,110,30,0,Math.PI*2);
   ctx.fill();
 }
 
@@ -131,10 +140,22 @@ for (let i=0;i<15;i++){
 }
 
 function sendMessage() {
+  if (!input.value.trim()) return;
+
   if (input.value.length > 50) {
     warning.textContent = 'Mensagem muito longa! Limite: 50 caracteres.';
     return;
   }
+  warning.textContent='';
+
+  player.msg = input.value;
+  player.msgTime = Date.now();
+
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify({ type:'chat', name:player.name, msg:input.value }));
+  }
+  input.value='';
+}
   warning.textContent='';
   ws.send(JSON.stringify({ type:'chat', name:player.name, msg:input.value }));
   input.value='';
