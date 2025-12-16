@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<!--
+JOGO CHAT 2D TOP VIEW ONLINE
+---------------------------------
+Este arquivo é o CLIENTE (HTML + JS).
+Para funcionar mundialmente via Wi‑Fi/Internet, você PRECISA de um SERVIDOR WebSocket.
+No final deste arquivo tem um EXEMPLO DE SERVIDOR EM NODE.JS.
+
+CONTROLES:
+PC: W A S D = andar | ; = focar no chat | E = acariciar cachorro
+CELULAR: Joystick virtual | Caixa de texto para chat
+
+LIMITES:
+Mensagem: até 50 caracteres
+Balão de fala: 5 segundos
+Coração do cachorro: 2 segundos
+-->
+
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8" />
+<title>Chat World 2D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<style>
+body { margin:0; overflow:hidden; background:#2b2b2b; font-family:Arial; }
+#game { background:#4caf50; display:block; }
+#chatBox {
+  position:fixed; bottom:0; left:0; width:100%;
+  background:rgba(0,0,0,0.7); padding:5px; display:flex;
+}
+#chatInput { flex:1; font-size:16px; }
+#chatLog {
+  position:fixed; left:10px; top:10px; width:260px; height:200px;
+  background:rgba(0,0,0,0.6); color:#fff; overflow-y:auto; padding:5px;
+}
+#warning { color:red; font-size:14px; }
+.joystick {
+  position:fixed; bottom:80px; left:20px; width:120px; height:120px;
+  background:rgba(0,0,0,0.3); border-radius:50%; display:none;
+}
+</style>
+</head>
+<body>
+
+<canvas id="game" width="900" height="600"></canvas>
+<div id="chatLog"></div>
+<div id="chatBox">
+  <input id="chatInput" placeholder="Digite sua mensagem..." maxlength="50" />
+  <button onclick="sendMessage()">Enviar</button>
+</div>
+<div id="warning"></div>
+<div class="joystick" id="joystick"></div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const chatLog = document.getElementById('chatLog');
+const input = document.getElementById('chatInput');
+const warning = document.getElementById('warning');
+
+let player = { x:450, y:300, name:'', msg:'', msgTime:0 };
+let players = {};
+let keys = {};
+
+// PERGUNTA O NOME AO ENTRAR
+player.name = prompt('Digite seu nome:');
+
+// WEBSOCKET (troque pelo IP do servidor)
+const ws = new WebSocket('ws://SEU_IP:3000');
+
+ws.onmessage = e => {
+  const data = JSON.parse(e.data);
+  players = data.players;
+  chatLog.innerHTML = data.chat.join('<br>');
+};
+
+// MOVIMENTO
+window.addEventListener('keydown', e => {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key === ';') input.focus();
+});
+window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+function update() {
+  if (keys['w']) player.y -= 3;
+  if (keys['s']) player.y += 3;
+  if (keys['a']) player.x -= 3;
+  if (keys['d']) player.x += 3;
+
+  ws.send(JSON.stringify({ type:'update', player }));
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // MAPA SIMPLES COM ÁRVORES
+  for (let i=0;i<10;i++){
+    ctx.fillStyle='#2e7d32';
+    ctx.beginPath();
+    ctx.arc(100+i*80,100,20,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  // JOGADORES
+  for (let id in players) {
+    let p = players[id];
+    ctx.fillStyle = 'blue';
+    ctx.fillRect(p.x-10,p.y-10,20,20);
+    ctx.fillStyle='white';
+    ctx.fillText(p.name,p.x-15,p.y-15);
+
+    if (p.msg && Date.now()-p.msgTime<5000) {
+      ctx.fillStyle='white';
+      ctx.fillRect(p.x-30,p.y-45,60,20);
+      ctx.fillStyle='black';
+      ctx.fillText(p.msg,p.x-28,p.y-30);
+    }
+  }
+}
+
+function sendMessage() {
+  if (input.value.length > 50) {
+    warning.textContent = 'Mensagem muito longa! Limite: 50 caracteres.';
+    return;
+  }
+  warning.textContent='';
+  ws.send(JSON.stringify({ type:'chat', name:player.name, msg:input.value }));
+  input.value='';
+}
+
+function loop(){ update(); draw(); requestAnimationFrame(loop); }
+loop();
+
+// ================= NPC CACHORRO =================
+let dog = { x:200, y:200, moving:true, timer:Date.now(), heartTime:0 };
+
+function updateDog(){
+  const now = Date.now();
+  if (dog.moving && now-dog.timer>20000){ dog.moving=false; dog.timer=now; }
+  if (!dog.moving && now-dog.timer>10000){ dog.moving=true; dog.timer=now; }
+
+  if (dog.moving){
+    dog.x += Math.random()*2-1;
+    dog.y += Math.random()*2-1;
+  }
+
+  const dx = player.x-dog.x;
+  const dy = player.y-dog.y;
+  const dist = Math.hypot(dx,dy);
+
+  if (dist<30){
+    ctx.fillStyle='white';
+    ctx.fillText('Aperte E para acariciar',dog.x-40,dog.y-25);
+    if (keys['e']) dog.heartTime=now;
+  }
+}
+
+const oldDraw = draw;
+draw = function(){
+  oldDraw();
+  ctx.fillStyle='brown';
+  ctx.fillRect(dog.x-8,dog.y-8,16,16);
+  if (Date.now()-dog.heartTime<2000){
+    ctx.fillStyle='red';
+    ctx.fillText('❤',dog.x-5,dog.y-20);
+  }
+};
+
+const oldUpdate = update;
+update = function(){ oldUpdate(); updateDog(); };
+
+
+// JOYSTICK MOBILE
+if (/Android|iPhone/i.test(navigator.userAgent)) {
+  document.getElementById('joystick').style.display='block';
+}
+</script>
+
+<!-- ================== SERVIDOR NODE.JS (PARA RENDER)
+
+1) Crie repositório no GitHub chamado chat-2d-server
+2) Coloque server.js
+3) Vá em https://render.com
+4) New → Web Service
+5) Connect GitHub
+6) Start Command: node server.js
+7) Environment: Node
+8) Após deploy, copie a URL gerada
+9) No index.html use: wss://URL_DO_RENDER
+
+SERVIDOR NODE.JS ==================
+SALVE COMO server.js
+
+npm install ws
+node server.js
+-----------------------------------------------------------
+
+const WebSocket = require('ws');
+const wss = new WebSocket.Server({ port:3000 });
+
+let players = {};
+let chat = [];
+
+wss.on('connection', ws => {
+  const id = Math.random().toString(36).substr(2,9);
+
+  ws.on('message', msg => {
+    const data = JSON.parse(msg);
+
+    if (data.type === 'update') {
+      players[id] = data.player;
+    }
+
+    if (data.type === 'chat') {
+      chat.push(`${data.name}: ${data.msg}`);
+      players[id].msg = data.msg;
+      players[id].msgTime = Date.now();
+      if (chat.length>50) chat.shift();
+    }
+
+    const packet = JSON.stringify({ players, chat });
+    wss.clients.forEach(c => c.send(packet));
+  });
+
+  ws.on('close', ()=> delete players[id]);
+});
+
+========================================================== -->
+
+</body>
+</html>
