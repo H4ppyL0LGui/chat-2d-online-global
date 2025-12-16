@@ -1,264 +1,119 @@
 <!DOCTYPE html>
 <!--
-JOGO CHAT 2D TOP VIEW ONLINE
----------------------------------
-Este arquivo é o CLIENTE (HTML + JS).
-Para funcionar mundialmente via Wi‑Fi/Internet, você PRECISA de um SERVIDOR WebSocket.
-No final deste arquivo tem um EXEMPLO DE SERVIDOR EM NODE.JS.
-
-CONTROLES:
-PC: W A S D = andar | ; = focar no chat | E = acariciar cachorro
-CELULAR: Joystick virtual | Caixa de texto para chat
-
-LIMITES:
-Mensagem: até 50 caracteres
-Balão de fala: 5 segundos
-Coração do cachorro: 2 segundos
+JOGO 3D SIMPLES - TOP VIEW / TERCEIRA PESSOA
+Usa Three.js (CDN)
+Movimento: W A S D
+Câmera segue o player
 -->
-
 <html lang="pt-br">
 <head>
-<meta charset="UTF-8" />
-<title>Chat World 2D</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<meta charset="UTF-8">
+<title>Jogo 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-body { margin:0; overflow:hidden; background:#2b2b2b; font-family:Arial; }
-#game { background:#4caf50; display:block; }
-#chatBox {
-  position:fixed; bottom:0; left:0; width:100%;
-  background:rgba(0,0,0,0.7); padding:5px; display:flex;
-}
-#chatInput { flex:1; font-size:16px; }
-#chatLog {
-  position:fixed; left:10px; top:10px; width:260px; height:200px;
-  background:rgba(0,0,0,0.6); color:#fff; overflow-y:auto; padding:5px;
-}
-#warning { color:red; font-size:14px; }
-.joystick {
-  position:fixed; bottom:80px; left:20px; width:120px; height:120px;
-  background:rgba(0,0,0,0.3); border-radius:50%; display:none;
+body { margin:0; overflow:hidden; background:#000; }
+#ui {
+  position:fixed; top:10px; left:10px; color:white; font-family:Arial;
+  background:rgba(0,0,0,0.5); padding:8px; border-radius:6px;
 }
 </style>
 </head>
 <body>
+<div id="ui">W A S D para andar</div>
 
-<canvas id="game" width="900" height="600"></canvas>
-<div id="chatLog"></div>
-<div id="chatBox">
-  <input id="chatInput" placeholder="Digite sua mensagem..." maxlength="50" />
-  <button onclick="sendMessage()">Enviar</button>
-</div>
-<div id="warning"></div>
-<div class="joystick" id="joystick"></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-const chatLog = document.getElementById('chatLog');
+// CENA
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
 
-// CANVAS TELA CHEIA
-function resize(){
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+// CÂMERA
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000
+);
+
+// RENDER
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// LUZ
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(5,10,5);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+
+// CHÃO
+const groundGeo = new THREE.PlaneGeometry(200, 200);
+const groundMat = new THREE.MeshStandardMaterial({ color:0x4caf50 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+scene.add(ground);
+
+// PLAYER (CUBO AZUL)
+const playerGeo = new THREE.BoxGeometry(1,1,1);
+const playerMat = new THREE.MeshStandardMaterial({ color:0x0000ff });
+const player = new THREE.Mesh(playerGeo, playerMat);
+player.position.y = 0.5;
+scene.add(player);
+
+// ÁRVORES
+for (let i=0;i<20;i++){
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2,0.2,1),
+    new THREE.MeshStandardMaterial({ color:0x6d4c41 })
+  );
+  trunk.position.set(
+    Math.random()*80-40,
+    0.5,
+    Math.random()*80-40
+  );
+
+  const leaves = new THREE.Mesh(
+    new THREE.SphereGeometry(0.8,16,16),
+    new THREE.MeshStandardMaterial({ color:0x1b5e20 })
+  );
+  leaves.position.set(0,1,0);
+
+  trunk.add(leaves);
+  scene.add(trunk);
 }
-window.addEventListener('resize', resize);
-resize();
-const input = document.getElementById('chatInput');
-const warning = document.getElementById('warning');
 
-let player = { x:450, y:300, name:'', msg:'', msgTime:0 };
-let players = {};
-let localId = 'local';
-let keys = {};
-
-// PERGUNTA O NOME AO ENTRAR
-player.name = prompt('Digite seu nome:');
-
-// WEBSOCKET (troque pelo IP do servidor)
-// WEBSOCKET
-const ws = new WebSocket('ws://SEU_IP:3000');
-
-ws.onmessage = e => {
-  const data = JSON.parse(e.data);
-  players = data.players;
-  chatLog.innerHTML = data.chat.join('<br>');
-};
-
-// MOVIMENTO
-window.addEventListener('keydown', e => {
-  keys[e.key.toLowerCase()] = true;
-  if (e.key === ';') input.focus();
-});
+// CONTROLES
+const keys = {};
+window.addEventListener('keydown', e => keys[e.key.toLowerCase()] = true);
 window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
-function update() {
-  if (keys['w']) player.y -= 3;
-  if (keys['s']) player.y += 3;
-  if (keys['a']) player.x -= 3;
-  if (keys['d']) player.x += 3;
-
-  // PLAYER LOCAL SEMPRE VISÍVEL
-  players[localId] = player;
-
-  if (ws.readyState === 1) {
-    ws.send(JSON.stringify({ type:'update', player }));
-  }
-}));
-}
-
-function draw() {
-  // FUNDO VERDE (MAPA)
-ctx.fillStyle = '#4caf50';
-ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  // MAPA SIMPLES COM ÁRVORES
-  // ÁRVORES
-for (let i=0;i<12;i++){
-  ctx.fillStyle='#6d4c41'; // tronco
-  ctx.fillRect(80+i*140,120,20,40);
-  ctx.fillStyle='#1b5e20'; // copa
-  ctx.beginPath();
-  ctx.arc(90+i*140,110,30,0,Math.PI*2);
-  ctx.fill();
-}
-
-  // JOGADORES
-  for (let id in players) {
-    let p = players[id];
-    ctx.fillStyle = 'blue';
-    ctx.fillRect(p.x-12,p.y-12,24,24);
-    ctx.fillStyle='white';
-    ctx.fillText(p.name,p.x-15,p.y-15);
-
-    if (p.msg && Date.now()-p.msgTime<5000) {
-      ctx.fillStyle='white';
-      ctx.fillRect(p.x-30,p.y-45,60,20);
-      ctx.fillStyle='black';
-      ctx.fillText(p.msg,p.x-28,p.y-30);
-    }
-  }
-}
-
-function sendMessage() {
-  if (!input.value.trim()) return;
-
-  if (input.value.length > 50) {
-    warning.textContent = 'Mensagem muito longa! Limite: 50 caracteres.';
-    return;
-  }
-  warning.textContent='';
-
-  player.msg = input.value;
-  player.msgTime = Date.now();
-
-  if (ws.readyState === 1) {
-    ws.send(JSON.stringify({ type:'chat', name:player.name, msg:input.value }));
-  }
-  input.value='';
-}
-  warning.textContent='';
-  ws.send(JSON.stringify({ type:'chat', name:player.name, msg:input.value }));
-  input.value='';
-}
-
-function loop(){ update(); draw(); requestAnimationFrame(loop); }
-loop();
-
-// ================= NPC CACHORRO =================
-let dog = { x:200, y:200, moving:true, timer:Date.now(), heartTime:0 };
-
-function updateDog(){
-  const now = Date.now();
-  if (dog.moving && now-dog.timer>20000){ dog.moving=false; dog.timer=now; }
-  if (!dog.moving && now-dog.timer>10000){ dog.moving=true; dog.timer=now; }
-
-  if (dog.moving){
-    dog.x += Math.random()*2-1;
-    dog.y += Math.random()*2-1;
-  }
-
-  const dx = player.x-dog.x;
-  const dy = player.y-dog.y;
-  const dist = Math.hypot(dx,dy);
-
-  if (dist<30){
-    ctx.fillStyle='white';
-    ctx.fillText('Aperte E para acariciar',dog.x-40,dog.y-25);
-    if (keys['e']) dog.heartTime=now;
-  }
-}
-
-const oldDraw = draw;
-draw = function(){
-  oldDraw();
-  ctx.fillStyle='brown';
-  ctx.fillRect(dog.x-8,dog.y-8,16,16);
-  if (Date.now()-dog.heartTime<2000){
-    ctx.fillStyle='red';
-    ctx.fillText('❤',dog.x-5,dog.y-20);
-  }
-};
-
-const oldUpdate = update;
-update = function(){ oldUpdate(); updateDog(); };
-
-
-// JOYSTICK MOBILE
-if (/Android|iPhone/i.test(navigator.userAgent)) {
-  document.getElementById('joystick').style.display='block';
-}
-</script>
-
-<!-- ================== SERVIDOR NODE.JS (PARA RENDER)
-
-1) Crie repositório no GitHub chamado chat-2d-server
-2) Coloque server.js
-3) Vá em https://render.com
-4) New → Web Service
-5) Connect GitHub
-6) Start Command: node server.js
-7) Environment: Node
-8) Após deploy, copie a URL gerada
-9) No index.html use: wss://URL_DO_RENDER
-
-SERVIDOR NODE.JS ==================
-SALVE COMO server.js
-
-npm install ws
-node server.js
------------------------------------------------------------
-
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port:3000 });
-
-let players = {};
-let chat = [];
-
-wss.on('connection', ws => {
-  const id = Math.random().toString(36).substr(2,9);
-
-  ws.on('message', msg => {
-    const data = JSON.parse(msg);
-
-    if (data.type === 'update') {
-      players[id] = data.player;
-    }
-
-    if (data.type === 'chat') {
-      chat.push(`${data.name}: ${data.msg}`);
-      players[id].msg = data.msg;
-      players[id].msgTime = Date.now();
-      if (chat.length>50) chat.shift();
-    }
-
-    const packet = JSON.stringify({ players, chat });
-    wss.clients.forEach(c => c.send(packet));
-  });
-
-  ws.on('close', ()=> delete players[id]);
+// RESIZE
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-========================================================== -->
+// LOOP
+function animate(){
+  requestAnimationFrame(animate);
 
+  if (keys['w']) player.position.z -= 0.1;
+  if (keys['s']) player.position.z += 0.1;
+  if (keys['a']) player.position.x -= 0.1;
+  if (keys['d']) player.position.x += 0.1;
+
+  // CÂMERA SEGUINDO
+  camera.position.x = player.position.x + 5;
+  camera.position.y = 5;
+  camera.position.z = player.position.z + 5;
+  camera.lookAt(player.position);
+
+  renderer.render(scene, camera);
+}
+
+animate();
+</script>
 </body>
 </html>
