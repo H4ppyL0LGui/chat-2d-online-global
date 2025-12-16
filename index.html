@@ -55,6 +55,14 @@ body { margin:0; overflow:hidden; background:#2b2b2b; font-family:Arial; }
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const chatLog = document.getElementById('chatLog');
+
+// CANVAS TELA CHEIA
+function resize(){
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
 const input = document.getElementById('chatInput');
 const warning = document.getElementById('warning');
 
@@ -66,6 +74,7 @@ let keys = {};
 player.name = prompt('Digite seu nome:');
 
 // WEBSOCKET (troque pelo IP do servidor)
+// WEBSOCKET
 const ws = new WebSocket('ws://SEU_IP:3000');
 
 ws.onmessage = e => {
@@ -91,21 +100,24 @@ function update() {
 }
 
 function draw() {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // FUNDO VERDE (MAPA)
+ctx.fillStyle = '#4caf50';
+ctx.fillRect(0,0,canvas.width,canvas.height);
 
   // MAPA SIMPLES COM ÁRVORES
-  for (let i=0;i<10;i++){
-    ctx.fillStyle='#2e7d32';
-    ctx.beginPath();
-    ctx.arc(100+i*80,100,20,0,Math.PI*2);
-    ctx.fill();
-  }
+  // ÁRVORES
+for (let i=0;i<15;i++){
+  ctx.fillStyle='#2e7d32';
+  ctx.beginPath();
+  ctx.arc(100+i*120,150,25,0,Math.PI*2);
+  ctx.fill();
+}
 
   // JOGADORES
   for (let id in players) {
     let p = players[id];
     ctx.fillStyle = 'blue';
-    ctx.fillRect(p.x-10,p.y-10,20,20);
+    ctx.fillRect(p.x-12,p.y-12,24,24);
     ctx.fillStyle='white';
     ctx.fillText(p.name,p.x-15,p.y-15);
 
